@@ -2,8 +2,7 @@ configfile: "../config/config.yaml"
 
 rule all:
     input:
-        "../results/data_validation/motus_output/Summary/motus_combined.txt"
-
+        scaffolds=expand("../results/assembly/HF_assembly/{sample}_metaspades/{sample}_contigs.fasta",sample=config["samples"])
 
 #################### Main Functions #######################################
 import os
@@ -85,7 +84,7 @@ rule concat_lanes:
         "logs/data_validation/lane_concatenation/{sample}_concat.log"
     resources:
         account = "pengel_beemicrophage",
-        runtime= "02:00:00"
+        runtime_s = 7200
     shell:
         "cat {input.R1s} > {output.R1_concat}; cat {input.R2s} > {output.R2_concat}; "
 
@@ -109,7 +108,7 @@ rule run_Krakern2:
     resources:
         account = "pengel_beemicrophage",
         mem_mb = 100000,
-        runtime= "03:00:00"
+        runtime_s= 10800
     shell:
         "kraken2 --use-names --threads {threads} \
          --db {input.db} \
@@ -131,7 +130,7 @@ rule parse_kraken_report:
         "logs/data_validation/kraken2/parsing/report_parser_kraken2.log"
     resources:
         account = "pengel_beemicrophage",
-        runtime= "00:15:00"
+        runtime_s= 1000
     script:
         "scripts/data_validation/parse_kraken_report.py"
 
@@ -154,7 +153,7 @@ rule fastQC_PreTrimming:
     resources:
         account = "pengel_beemicrophage",
         mem_mb = 6000,
-        runtime= "01:00:00"
+        runtime_s= 3600
     shell:
         "mkdir -p {output}; "
         "fastqc -o {output} {input.R1};"
@@ -183,7 +182,7 @@ rule rawreads_trimming:
     resources:
         account = "pengel_beemicrophage",
         mem_mb = 6000,
-        runtime= "03:00:00"
+        runtime_s= 10800
     shell:
         "trimmomatic PE -phred33 -threads {threads} {input.R1} {input.R2} \
          {output.R1_paired} {output.R1_unpaired} {output.R2_paired} {output.R2_unpaired} \
@@ -205,7 +204,7 @@ rule fastQC_PostTrimming:
     resources:
         account = "pengel_beemicrophage",
         mem_mb = 6000,
-        runtime= "01:00:00"
+        runtime_s= 3600
     shell:
         "mkdir -p {output}; "
         "fastqc -o {output} {input.R1} {input.R2}"
@@ -222,7 +221,7 @@ rule parse_fastQC:
     resources:
         account = "pengel_beemicrophage",
         mem_mb = 6000,
-        runtime= "00:20:00"
+        runtime= 1800
     script:
         "scripts/data_validation/parse_fastqc_output.py"
 
@@ -251,7 +250,7 @@ rule host_filtering:
     resources:
         account = "pengel_beemicrophage",
         mem_mb = 100000,
-        runtime= "08:00:00"
+        runtime_s= 28800
     shell:
         "bbsplit.sh in1={input.R1} in2={input.R2} ref={params.ref_Acer},{params.ref_Hsap} \
         basename={output.dir}/{wildcards.sample}_HF_discarded_%.sam \
@@ -276,7 +275,7 @@ rule parse_filtering_refstats:
     resources:
         account = "pengel_beemicrophage",
         mem_mb = 500,
-        runtime= "00:30:00"
+        runtime_s= 1800
     shell:
         "echo -e 'sample\tname\tperc_unambiguousReads\tunambiguousMB\tperc_ambiguousReads\tambiguousMB\tunambiguousReads\tambiguousReads\tassignedReads\tassignedBases' > {output}; "
         "tail -n +2 -q {input.files} > {params.file1}; "
@@ -303,7 +302,7 @@ rule count_reads_qc:
     resources:
         account = "pengel_beemicrophage",
         mem_mb = 4000,
-        runtime= "00:30:00"
+        runtime_s= 1800
     shell:
         "touch {output}; "
         "(./scripts/data_validation/count_reads.sh {input.preT} {input.postT} {input.postF} {output})2>{log}"
@@ -319,7 +318,7 @@ rule count_reads_summary:
     resources:
         account = "pengel_beemicrophage",
         mem_mb = 4000,
-        runtime= "00:30:00"
+        runtime_s= 1800
     shell:
         "(awk 'FNR!=NR && FNR==1 {{next}} 1' {input.sams} > {output})2>{log}"
 
@@ -347,7 +346,7 @@ rule run_motus:
     resources:
         account = "pengel_beemicrophage",
         mem_mb = 500000,
-        runtime= "02:30:00"
+        runtime_s= 9000
     threads: 24
     log:
         "logs/data_validation/motus/{sample}_motus.log"
@@ -367,7 +366,7 @@ rule run_motus_count:
     resources:
         account = "pengel_beemicrophage",
         mem_mb = 500000,
-        runtime= "02:30:00"
+        runtime_s= 9000
     threads: 24
     log:
         "logs/data_validation/motus/{sample}_motus.log"
@@ -387,7 +386,7 @@ rule merge_motus:
     resources:
         account="pengel_beemicrophage",
         mem_mb= 500000,
-        runtime= "02:00:00"
+        runtime= 7200
     threads: 12
     log:
         "logs/data_validation/motus/merge_motus.log"
@@ -406,7 +405,7 @@ rule parse_motus:
     resources:
         account="pengel_beemicrophage",
         mem_mb= 50000,
-        runtime= "03:30:00"
+        runtime_s= 14400
     log:
         "logs/data_validation/motus/parse_motus.log"
     conda:
@@ -416,3 +415,73 @@ rule parse_motus:
 
 
 
+################################################################################
+################################## MAGS ########################################
+################################################################################
+# This part of the pipleine takes takes host filtered reads (both virome and bacterial) and reconstructs MAGS
+# This part of the pipeline is divided in several steps:
+#   (1): The host-filtered reads are assembled using metaspades
+#   (2): backmapping where the read of each sample are mapped against the assembly
+#        of every other sample
+#   (3): scaffold are binned into MAGS in functon of their coverage across samples
+#        using metabat2
+#   (4): MAGs are QCed, filtered in function of completeness and contamination,
+#        and taxonomically classified
+################################################################################
+################################################################################
+
+##################################### (1) ######################################
+# the following rules use spades (metaviralSPades) to assemble the metagenomes of every sample.
+# then assembly are filtered in function of length and coverage
+
+rule assemble_host_filtered:
+    input:
+        R1 = "../data/host_filtered_reads/{sample}_R1_HF.fastq.gz",
+        R2 = "../data/host_filtered_reads/{sample}_R2_HF.fastq.gz"
+    output:
+        scaffolds="../results/assembly/HF_assembly/{sample}_metaspades/{sample}_contigs.fasta",
+        graph = "../results/assembly/HF_assembly/{sample}_metaspades/{sample}_assembly_graph.fastg",
+        spades_log = "../results/assembly/HF_assembly/{sample}_metaspades/{sample}_spades.log"
+    params:
+        memory_limit = 200,
+        dir=directory("../scratch_link/assembly/HF_assembly/{sample}_metaspades/")
+    threads: 40
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 250000,
+        runtime_s= 86400
+    log:
+        "logs/assembly/HF/{sample}_assemble_HF.log"
+    benchmark:
+        "logs/assembly/HF/{sample}_assemble_HF.benchmark"
+    conda:
+        "envs/assembly.yaml"
+    shell:
+        "spades.py --metaviral --pe1-1 {input.R1} --pe1-2 {input.R2} \
+        -o {params.dir} \
+        -k 21,33,55,77,99,127 -m {params.memory_limit} -t {threads}; "
+        "mv {params.dir}/contigs.fasta {output.scaffolds}; "
+        "mv {params.dir}/spades.log {output.spades_log}; "
+        "mv {params.dir}/assembly_graph.fastg {output.graph}; "
+
+
+
+rule run_quast_contigs:
+    input:
+        "../scratch_link/assembly/HF_assembly/{sample}_metaspades/contigs.fasta"
+    output:
+        "../results/assembly/quast/{sample}_quast_report.tsv"
+    params:
+        dir=directory("../scratch_link/assembly/HF_assembly/quast/{sample}_quast_output/"),
+        
+    log:
+        "logs/assembly/HF/quast/{sample}_quast.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 50000,
+        runtime_s =  3600
+    conda:
+        "envs/quast_contigs.yaml"
+    shell:
+        "metaquast.py {input} -o {params.dir} --test-no-ref ;"
+        "mv {params.dir}/transposed_report.tsv {output}"
