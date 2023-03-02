@@ -1,0 +1,6 @@
+name: filter_assembly
+
+channels:
+  - conda-forge
+dependencies:
+  - biopython

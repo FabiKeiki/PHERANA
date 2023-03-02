@@ -2,8 +2,9 @@ configfile: "../config/config.yaml"
 
 rule all:
     input:
-        scaffolds=expand("../results/assembly/HF_assembly/{sample}_metaspades/{sample}_contigs.fasta",sample=config["samples"])
+        result = directory("../scratch_link/identification/wtp/wtp_82P/")
 
+        
 #################### Main Functions #######################################
 import os
 def get_direction_r1(wildcards) :
@@ -416,72 +417,271 @@ rule parse_motus:
 
 
 ################################################################################
-################################## MAGS ########################################
+################################## Sample Assembly #############################
 ################################################################################
 # This part of the pipleine takes takes host filtered reads (both virome and bacterial) and reconstructs MAGS
 # This part of the pipeline is divided in several steps:
-#   (1): The host-filtered reads are assembled using metaspades
-#   (2): backmapping where the read of each sample are mapped against the assembly
-#        of every other sample
-#   (3): scaffold are binned into MAGS in functon of their coverage across samples
-#        using metabat2
-#   (4): MAGs are QCed, filtered in function of completeness and contamination,
-#        and taxonomically classified
+#   (1): Assembly : Using different assemblers and comparing them with quast
+#   (1.1) metaSPades
+#   (1.2) metaviralSPades
+#   (1.3) MEGAHIT
+#   (1.4) stats on assemblies with metquast
+#   (1.5) filtering assemblies
+#   (1.6) stats on filtered assemblies with metaquast
 ################################################################################
 ################################################################################
 
-##################################### (1) ######################################
-# the following rules use spades (metaviralSPades) to assemble the metagenomes of every sample.
-# then assembly are filtered in function of length and coverage
+##################################### (1.1) ######################################
+# the following rules use metaSPades to assemble the metagenomes of every sample.
 
-rule assemble_host_filtered:
+rule assemble_metaspades:
     input:
         R1 = "../data/host_filtered_reads/{sample}_R1_HF.fastq.gz",
         R2 = "../data/host_filtered_reads/{sample}_R2_HF.fastq.gz"
     output:
-        scaffolds="../results/assembly/HF_assembly/{sample}_metaspades/{sample}_contigs.fasta",
-        graph = "../results/assembly/HF_assembly/{sample}_metaspades/{sample}_assembly_graph.fastg",
-        spades_log = "../results/assembly/HF_assembly/{sample}_metaspades/{sample}_spades.log"
+        scratch_dir=directory("../scratch_link/assembly/metaspades/{sample}_mspades/"),
+        contigs="../data/assembly/metaspades/{sample}_mspades/{sample}_mspades_contigs.fasta",
     params:
         memory_limit = 200,
-        dir=directory("../scratch_link/assembly/HF_assembly/{sample}_metaspades/")
     threads: 40
     resources:
         account="pengel_beemicrophage",
         mem_mb= 250000,
-        runtime_s= 86400
+        runtime_s= 18000
     log:
-        "logs/assembly/HF/{sample}_assemble_HF.log"
-    benchmark:
-        "logs/assembly/HF/{sample}_assemble_HF.benchmark"
+        "logs/assembly/metaspades/{sample}_assemble_HF.log"
+    conda:
+        "envs/assembly.yaml"
+    shell:
+        "spades.py --meta --pe1-1 {input.R1} --pe1-2 {input.R2} \
+        -o {output.scratch_dir} \
+        -k 21,33,55,77,99,127 -m {params.memory_limit} -t {threads}; "
+        "mv {output.scratch_dir}/contigs.fasta {output.contigs}; "
+        
+
+##################################### (1.2) ######################################
+# the following rules use metaviralSPades to assemble the metagenomes of every sample.
+
+rule assemble_metaviralspades:
+    input:
+        R1 = "../data/host_filtered_reads/{sample}_R1_HF.fastq.gz",
+        R2 = "../data/host_filtered_reads/{sample}_R2_HF.fastq.gz"
+    output:
+        scratch_dir=directory("../scratch_link/assembly/metaviralspades/{sample}_mvspades/"),
+        contigs="../data/assembly/metaviralspades/{sample}_mvspades/{sample}_mvspades_contigs.fasta"
+    params:
+        memory_limit = 200
+    threads: 40
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 250000,
+        runtime_s= 18000
+    log:
+        "logs/assembly/metaviralspades/{sample}_assemble.log"
     conda:
         "envs/assembly.yaml"
     shell:
         "spades.py --metaviral --pe1-1 {input.R1} --pe1-2 {input.R2} \
-        -o {params.dir} \
+        -o {output.scratch_dir} \
         -k 21,33,55,77,99,127 -m {params.memory_limit} -t {threads}; "
-        "mv {params.dir}/contigs.fasta {output.scaffolds}; "
-        "mv {params.dir}/spades.log {output.spades_log}; "
-        "mv {params.dir}/assembly_graph.fastg {output.graph}; "
+        "mv {output.scratch_dir}/contigs.fasta {output.contigs}; "
+        
+        
+##################################### (1.3) ######################################
+# the following rules use MEGAHIT to assemble the metagenomes of every sample.
 
+rule assemble_megahit:
+    input:
+        R1 = "../data/host_filtered_reads/{sample}_R1_HF.fastq.gz",
+        R2 = "../data/host_filtered_reads/{sample}_R2_HF.fastq.gz"
+    output:
+        scratch_dir=directory("../scratch_link/assembly/megahit/{sample}_megahit/"),
+        contigs="../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs.fasta"
+    params:
+        dir=directory("../scratch_link/assembly/megahit/{sample}_megahit/")
+    threads: 20
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 100000,
+        runtime_s= 15000
+    log:
+        "logs/assembly/megahit/{sample}_assemble.log"
+    conda:
+        "envs/assembly.yaml"
+    shell:
+        "megahit -1 {input.R1} -2 {input.R2} \
+        -o {output.scratch_dir} \
+        --k-min 21 --k-max 127 --k-step 12;" 
+        "mv {output.scratch_dir}/final.contigs.fa {output.contigs}; "
+       
+
+
+##################################### (1.4) ######################################
+# the following rules use metaquast to retrieve statistics for each assemblers
 
 
 rule run_quast_contigs:
     input:
-        "../scratch_link/assembly/HF_assembly/{sample}_metaspades/contigs.fasta"
+        mspades= "../data/assembly/metaspades/{sample}_mspades/{sample}_mspades_contigs.fasta",
+        mvspades= "../data/assembly/metaviralspades/{sample}_mvspades/{sample}_mvspades_contigs.fasta",
+        megahit = "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs.fasta"
     output:
-        "../results/assembly/quast/{sample}_quast_report.tsv"
-    params:
-        dir=directory("../scratch_link/assembly/HF_assembly/quast/{sample}_quast_output/"),
+        dir=directory("../scratch_link/assembly/quast/{sample}_quast_output/"),
+        report= "../results/assembly/quast/{sample}_quast_report.tsv"
         
     log:
-        "logs/assembly/HF/quast/{sample}_quast.log"
+        "logs/assembly/quast/{sample}_quast.log"
     resources:
         account="pengel_beemicrophage",
-        mem_mb= 50000,
+        mem_mb= 25000,
         runtime_s =  3600
     conda:
         "envs/quast_contigs.yaml"
     shell:
-        "metaquast.py {input} -o {params.dir} --test-no-ref ;"
-        "mv {params.dir}/transposed_report.tsv {output}"
+        "metaquast.py {input.mspades} {input.mvspades} {input.megahit} -o {output.dir} --max-ref-number 0;"
+        "mv {output.dir}/transposed_report.tsv {output.report}"
+
+
+
+rule parse_quast_reports:
+    input:
+       expand("../results/assembly/quast/{sample}_quast_report.tsv",sample=config["samples"])
+    output:
+        "../results/assembly/quast/summary_quast_report.tsv"
+    log:
+        "logs/assembly/quast/summary_quast.log"
+    resources:
+        account="pengel_beemicrophage",
+        runtime_s = 1800
+    script:
+        "scripts/assembly/parse_quast_report.py"
+
+##################################### (1.5) ######################################
+# THe follwoing rules apply a filter to the assembled contigs
+
+rule filter_megahit:
+    input:
+        "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs.fasta"
+    output:
+        "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs_filt.fasta"
+    params:
+        length_t = 1000,
+        cov_t = 1
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 2000,
+        runtime_s= 1800
+    log:
+        "logs/assembly/filtering/megahit/{sample}_filtering.log"
+    conda:
+        "envs/filter_assembly.yaml"
+    script:
+        "scripts/assembly/filter_assembly.py"
+
+rule filter_metaspades:
+    input:
+        "../data/assembly/metaspades/{sample}_mspades/{sample}_mspades_contigs.fasta"
+    output:
+        "../data/assembly/metaspades/{sample}_mspades/{sample}_mspades_contigs_filt.fasta"
+    params:
+        length_t = 1000,
+        cov_t = 1
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 2000,
+        runtime_s= 1800
+    log:
+        "logs/assembly/filtering/metaspades/{sample}_filtering.log"
+    conda:
+        "envs/filter_assembly.yaml"
+    script:
+        "scripts/assembly/filter_assembly.py"
+
+rule filter_metaviralspades:
+    input:
+        "../data/assembly/metaviralspades/{sample}_mvspades/{sample}_mvspades_contigs.fasta"
+    output:
+        "../data/assembly/metaviralspades/{sample}_mvspades/{sample}_mvspades_contigs_filt.fasta"
+    params:
+        length_t = 1000,
+        cov_t = 1
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 2000,
+            runtime_s= 1800
+        log:
+        "logs/assembly/filtering/metaviralspades/{sample}_filtering.log"
+    conda:
+        "envs/filter_assembly.yaml"
+    script:
+        "scripts/assembly/filter_assembly.py"
+
+##################################### (1.6) ######################################
+# the following rules use metaquast to retrieve statistics for each filtered assemblies
+
+
+rule run_quast_contigs_filt:
+    input:
+        mspades= "../data/assembly/metaspades/{sample}_mspades/{sample}_mspades_contigs_filt.fasta",
+        mvspades= "../data/assembly/metaviralspades/{sample}_mvspades/{sample}_mvspades_contigs_filt.fasta",
+        megahit = "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs_filt.fasta"
+    output:
+        dir=directory("../scratch_link/assembly/quast/{sample}_quast_output_filt/"),
+        report= "../results/assembly/quast/{sample}_quast_report_filt.tsv"
+        
+    log:
+        "logs/assembly/quast/{sample}_quast_filt.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 25000,
+        runtime_s =  3600
+    conda:
+        "envs/quast_contigs.yaml"
+    shell:
+        "metaquast.py {input.mspades} {input.mvspades} {input.megahit} -o {output.dir} --max-ref-number 0;"
+        "mv {output.dir}/transposed_report.tsv {output.report}"
+
+
+
+rule parse_quast_reports_filt:
+    input:
+       expand("../results/assembly/quast/{sample}_quast_report_filt.tsv",sample=config["samples"])
+    output:
+        "../results/assembly/quast/summary_quast_report_filt.tsv"
+    log:
+        "logs/assembly/quast/summary_quast_filt.log"
+    resources:
+        account="pengel_beemicrophage",
+        runtime_s = 1800
+    script:
+        "scripts/assembly/parse_quast_report.py"
+
+################################################################################
+############################## Phage identification #############################
+################################################################################
+# This part of the pipeline uses what the phage piepline to identify phages
+
+rule wtp_megahit:
+    input:
+        "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs_filt.fasta"
+    output:
+        result = directory("../result/identification/wtp/wtp_{sample}/")
+    log:
+        "logs/identification/wtp/{sample}_wtp.log"
+    benchmark:
+        "logs/identification/wtp/{sample}_wtp.benchmark"
+    threads:
+        40
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 50000,
+        runtime_s= 42000
+    params:
+        work = directory("../scratch_link/identification/wtp/")
+    conda:
+        "envs/phage_identification.yaml"
+    shell:
+        "nextflow run replikation/What_the_Phage --setup -profile local,singularity --databases {params.work} --cachedir {params.work} -r v1.2.0 ;" 
+        "nextflow run replikation/What_the_Phage --fasta {input} --cores {threads} -profile local,singularity /
+        --work_dir {params.work} --databases {params.work} --cachedir {params.work} --output {output.result} -r v1.2.0;"                
+
