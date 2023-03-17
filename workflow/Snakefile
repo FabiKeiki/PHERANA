@@ -2,8 +2,7 @@ configfile: "../config/config.yaml"
 
 rule all:
     input:
-        result = directory("../scratch_link/identification/wtp/wtp_82P/")
-
+        expand("../results/data_validation/kraken2_output/Reports/{sample}_kraken2_report",sample=config["samples"])
         
 #################### Main Functions #######################################
 import os
@@ -93,14 +92,14 @@ rule concat_lanes:
 ################################### Kraken2 ###################################
 
 # This rule takes the concatenated raw reads files and runs them against the krakend db
-rule run_Krakern2:
+rule run_kraken:
     input:
         R1="../scratch_link/concat_raw_reads/{sample}_R1_concat.fastq.gz",
         R2="../scratch_link/concat_raw_reads/{sample}_R2_concat.fastq.gz",
-        db="../../../mndiaye1/PHOSTER/workflow/resources/databases/220131_costum_kraken2db"
+        db="../../../mndiaye1/PHOSTER/workflow/resources/databases/230228_costum_kraken2db_new"
     output:
         tab=temp("../results/data_validation/kraken2_output/{sample}_kraken2_report.kraken"),
-        rep="../results/data_validation/kraken2_output/Reports/{sample}_kraken2_report"
+        rep="../results/data_validation/kraken2_output/Reports/{sample}_kraken2_report",
     conda:
         "envs/Kraken2.yaml"
     threads: 24
@@ -439,8 +438,8 @@ rule assemble_metaspades:
         R1 = "../data/host_filtered_reads/{sample}_R1_HF.fastq.gz",
         R2 = "../data/host_filtered_reads/{sample}_R2_HF.fastq.gz"
     output:
-        scratch_dir=directory("../scratch_link/assembly/metaspades/{sample}_mspades/"),
-        contigs="../data/assembly/metaspades/{sample}_mspades/{sample}_mspades_contigs.fasta",
+        scratch_dir=directory("../scratch_link/assembly/metaspades/{sample}_metaspades/"),
+        contigs="../data/assembly/metaspades/{sample}_metaspades/{sample}_metaspades_contigs.fasta",
     params:
         memory_limit = 200,
     threads: 40
@@ -467,8 +466,8 @@ rule assemble_metaviralspades:
         R1 = "../data/host_filtered_reads/{sample}_R1_HF.fastq.gz",
         R2 = "../data/host_filtered_reads/{sample}_R2_HF.fastq.gz"
     output:
-        scratch_dir=directory("../scratch_link/assembly/metaviralspades/{sample}_mvspades/"),
-        contigs="../data/assembly/metaviralspades/{sample}_mvspades/{sample}_mvspades_contigs.fasta"
+        scratch_dir=directory("../scratch_link/assembly/metaviralspades/{sample}_metaviralspades/"),
+        contigs="../data/assembly/metaviralspades/{sample}_metaviralspades/{sample}_metaviralspades_contigs.fasta"
     params:
         memory_limit = 200
     threads: 40
@@ -522,8 +521,8 @@ rule assemble_megahit:
 
 rule run_quast_contigs:
     input:
-        mspades= "../data/assembly/metaspades/{sample}_mspades/{sample}_mspades_contigs.fasta",
-        mvspades= "../data/assembly/metaviralspades/{sample}_mvspades/{sample}_mvspades_contigs.fasta",
+        mspades= "../data/assembly/metaspades/{sample}_metaspades/{sample}_metaspades_contigs.fasta",
+        mvspades= "../data/assembly/metaviralspades/{sample}_metaviralspades/{sample}_metaviralspades_contigs.fasta",
         megahit = "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs.fasta"
     output:
         dir=directory("../scratch_link/assembly/quast/{sample}_quast_output/"),
@@ -559,11 +558,11 @@ rule parse_quast_reports:
 ##################################### (1.5) ######################################
 # THe follwoing rules apply a filter to the assembled contigs
 
-rule filter_megahit:
+rule filter_assembly:
     input:
-        "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs.fasta"
+        expand("../data/assembly/{assembly}/{sample}_{assembly}/{sample}_{assembly}_contigs.fasta",sample=config["samples"],assembly=config["assembly"])
     output:
-        "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs_filt.fasta"
+        "../data/assembly/{assembly}/{sample}_{assembly}/{sample}_{assembly}_contigs_filt.fasta"
     params:
         length_t = 1000,
         cov_t = 1
@@ -572,58 +571,19 @@ rule filter_megahit:
         mem_mb= 2000,
         runtime_s= 1800
     log:
-        "logs/assembly/filtering/megahit/{sample}_filtering.log"
+        "logs/assembly/filtering/{assembly}/{sample}_filtering.log"
     conda:
         "envs/filter_assembly.yaml"
     script:
         "scripts/assembly/filter_assembly.py"
-
-rule filter_metaspades:
-    input:
-        "../data/assembly/metaspades/{sample}_mspades/{sample}_mspades_contigs.fasta"
-    output:
-        "../data/assembly/metaspades/{sample}_mspades/{sample}_mspades_contigs_filt.fasta"
-    params:
-        length_t = 1000,
-        cov_t = 1
-    resources:
-        account="pengel_beemicrophage",
-        mem_mb= 2000,
-        runtime_s= 1800
-    log:
-        "logs/assembly/filtering/metaspades/{sample}_filtering.log"
-    conda:
-        "envs/filter_assembly.yaml"
-    script:
-        "scripts/assembly/filter_assembly.py"
-
-rule filter_metaviralspades:
-    input:
-        "../data/assembly/metaviralspades/{sample}_mvspades/{sample}_mvspades_contigs.fasta"
-    output:
-        "../data/assembly/metaviralspades/{sample}_mvspades/{sample}_mvspades_contigs_filt.fasta"
-    params:
-        length_t = 1000,
-        cov_t = 1
-    resources:
-        account="pengel_beemicrophage",
-        mem_mb= 2000,
-            runtime_s= 1800
-        log:
-        "logs/assembly/filtering/metaviralspades/{sample}_filtering.log"
-    conda:
-        "envs/filter_assembly.yaml"
-    script:
-        "scripts/assembly/filter_assembly.py"
-
 ##################################### (1.6) ######################################
 # the following rules use metaquast to retrieve statistics for each filtered assemblies
 
 
 rule run_quast_contigs_filt:
     input:
-        mspades= "../data/assembly/metaspades/{sample}_mspades/{sample}_mspades_contigs_filt.fasta",
-        mvspades= "../data/assembly/metaviralspades/{sample}_mvspades/{sample}_mvspades_contigs_filt.fasta",
+        mspades= "../data/assembly/metaspades/{sample}_metaspades/{sample}_metaspades_contigs_filt.fasta",
+        mvspades= "../data/assembly/metaviralspades/{sample}_metaviralspades/{sample}_metaviralspades_contigs_filt.fasta",
         megahit = "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs_filt.fasta"
     output:
         dir=directory("../scratch_link/assembly/quast/{sample}_quast_output_filt/"),
@@ -657,31 +617,43 @@ rule parse_quast_reports_filt:
         "scripts/assembly/parse_quast_report.py"
 
 ################################################################################
-############################## Phage identification #############################
+############################## Derepliction       ##############################
 ################################################################################
-# This part of the pipeline uses what the phage piepline to identify phages
 
-rule wtp_megahit:
+rule dereplicate_assembly:
     input:
-        "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs_filt.fasta"
+        mspades= "../data/assembly/metaspades/{sample}_metaspades/{sample}_metaspades_contigs_filt.fasta",
+        mvspades= "../data/assembly/metaviralspades/{sample}_metaviralspades/{sample}_metaviralspades_contigs_filt.fasta",
+        megahit = "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs_filt.fasta"
     output:
-        result = directory("../result/identification/wtp/wtp_{sample}/")
+        concat_assembly = temp("../data/assembly/concat_assembly/{sample}_concat_assembly.fasta"),
+        cluster_centr = "../data/assembly/vsearch/{sample}_contigs_filt_dereplicated.fasta"
+        cluster_info = "../results/assembly/vsearch/{sample}_clusters.tsv"
     log:
-        "logs/identification/wtp/{sample}_wtp.log"
-    benchmark:
-        "logs/identification/wtp/{sample}_wtp.benchmark"
-    threads:
-        40
+        "logs/assembly/vsearch/{sample}_vsearch.log"
     resources:
         account="pengel_beemicrophage",
-        mem_mb= 50000,
-        runtime_s= 42000
-    params:
-        work = directory("../scratch_link/identification/wtp/")
+        mem_mb= 100000,
+        runtime_s =  36000
+    threads:
+        20
     conda:
-        "envs/phage_identification.yaml"
+        "envs/vsearch.yaml"
     shell:
-        "nextflow run replikation/What_the_Phage --setup -profile local,singularity --databases {params.work} --cachedir {params.work} -r v1.2.0 ;" 
-        "nextflow run replikation/What_the_Phage --fasta {input} --cores {threads} -profile local,singularity /
-        --work_dir {params.work} --databases {params.work} --cachedir {params.work} --output {output.result} -r v1.2.0;"                
+        "cat {input.mspades} {input.mvspades} {input.megahit} > {output.concat_assembly};"
+        "vsearch --cluster_fast {output.concat_assembly} --centroids {output.cluster_centr} --uc {output.cluster_info} -id 0.99 -iddef 0 --query_cov 0.9 --maxseqlength 10000000 --threads {threads}"
 
+
+
+
+################################################################################
+############################## Phage identification  ###########################
+################################################################################
+
+rule run_virsorter:
+    input:
+        "../data/assembly/vsearch/{sample}_contigs_filt_dereplicated.fasta"
+    output:
+        dir = dir("../results/identification/virsorter/{sample}")
+    log:
+        "logs/assembly/vsearch/{sample}_vsearch.log"
