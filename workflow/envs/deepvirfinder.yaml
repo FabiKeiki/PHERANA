@@ -1,0 +1,8 @@
+name: deepvirfinder
+channels:
+  
+  - conda-forge
+  - hcc
+dependencies:
+  - deepvirfinder
+  - python = 3.6

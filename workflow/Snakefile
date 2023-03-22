@@ -2,8 +2,9 @@ configfile: "../config/config.yaml"
 
 rule all:
     input:
-        expand("../results/data_validation/kraken2_output/Reports/{sample}_kraken2_report",sample=config["samples"])
-        
+        expand("../results/identification/deepvirfinder/{sample}/{sample}_deepvirfinder_score_parsed.tsv/",sample=config["samples"])
+
+
 #################### Main Functions #######################################
 import os
 def get_direction_r1(wildcards) :
@@ -14,9 +15,13 @@ def get_direction_r1(wildcards) :
     r_list=[]
     r1_l1=[s for s in l if "L1_R1" in s]
     r1_l2=[s for s in l if "L2_R1" in s]
+    r1_l3=[s for s in l if "L3_R1" in s]
+    r1_l4=[s for s in l if "L4_R1" in s]
 
     r_list.extend(r1_l1)
     r_list.extend(r1_l2)
+    if len(r1_l3) >0: r_list.extend(r1_l3)
+    if len(r1_l4) >0: r_list.extend(r1_l4)
     return(r_list)
 
 
@@ -28,34 +33,15 @@ def get_direction_r2(wildcards) :
     r_list=[]
     r2_l1=[s for s in l if "L1_R2" in s]
     r2_l2=[s for s in l if "L2_R2" in s]
+    r2_l3=[s for s in l if "L3_R2" in s]
+    r2_l4=[s for s in l if "L4_R2" in s]
 
     r_list.extend(r2_l1)
     r_list.extend(r2_l2)
+    if len(r2_l3) >0: r_list.extend(r2_l3)
+    if len(r2_l4) >0: r_list.extend(r2_l4)
     return(r_list)
 
-def get_files_commas(path, sep=","):
-    file_l=os.listdir(path)
-    file_l2=[]
-    for f in file_l:
-        file_l2.append(os.path.join(path,f))
-    out=sep.join(file_l2)
-    return(out)
-
-def get_wildcard_commas(paths, sep=","):
-    file_l=[paths]
-    out=sep.join(file_l)
-    return(out)
-
-def get_type(wildcards) :
-    type_w=wildcards.type
-    return(type_w)
-
-def join_list(li, car):
-    fin_l=[]
-    for i in li:
-        add=i+car
-        fin_l.append(add)
-    return(fin_l)
 
 
 ################################################################################
@@ -96,7 +82,7 @@ rule run_kraken:
     input:
         R1="../scratch_link/concat_raw_reads/{sample}_R1_concat.fastq.gz",
         R2="../scratch_link/concat_raw_reads/{sample}_R2_concat.fastq.gz",
-        db="../../../mndiaye1/PHOSTER/workflow/resources/databases/230228_costum_kraken2db_new"
+        db="../../../mndiaye1/PHOSTER/workflow/resources/default_DBs/230228_costum_kraken2db_new"
     output:
         tab=temp("../results/data_validation/kraken2_output/{sample}_kraken2_report.kraken"),
         rep="../results/data_validation/kraken2_output/Reports/{sample}_kraken2_report",
@@ -616,44 +602,199 @@ rule parse_quast_reports_filt:
     script:
         "scripts/assembly/parse_quast_report.py"
 
-################################################################################
-############################## Derepliction       ##############################
-################################################################################
-
-rule dereplicate_assembly:
-    input:
-        mspades= "../data/assembly/metaspades/{sample}_metaspades/{sample}_metaspades_contigs_filt.fasta",
-        mvspades= "../data/assembly/metaviralspades/{sample}_metaviralspades/{sample}_metaviralspades_contigs_filt.fasta",
-        megahit = "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs_filt.fasta"
-    output:
-        concat_assembly = temp("../data/assembly/concat_assembly/{sample}_concat_assembly.fasta"),
-        cluster_centr = "../data/assembly/vsearch/{sample}_contigs_filt_dereplicated.fasta"
-        cluster_info = "../results/assembly/vsearch/{sample}_clusters.tsv"
-    log:
-        "logs/assembly/vsearch/{sample}_vsearch.log"
-    resources:
-        account="pengel_beemicrophage",
-        mem_mb= 100000,
-        runtime_s =  36000
-    threads:
-        20
-    conda:
-        "envs/vsearch.yaml"
-    shell:
-        "cat {input.mspades} {input.mvspades} {input.megahit} > {output.concat_assembly};"
-        "vsearch --cluster_fast {output.concat_assembly} --centroids {output.cluster_centr} --uc {output.cluster_info} -id 0.99 -iddef 0 --query_cov 0.9 --maxseqlength 10000000 --threads {threads}"
-
-
 
 
 ################################################################################
 ############################## Phage identification  ###########################
 ################################################################################
+#This part of the pipeline runs three tools on all the assembly, to identify 
+#phages, these sequences will then dereplicated and binned. Each phages id tools
+#ouput are parsed and merged, and a fasta file of the phages sequences is extracted
 
+
+rule concat_assembly:
+    input: 
+        mspades= "../data/assembly/metaspades/{sample}_metaspades/{sample}_metaspades_contigs_filt.fasta",
+        mvspades= "../data/assembly/metaviralspades/{sample}_metaviralspades/{sample}_metaviralspades_contigs_filt.fasta",
+        megahit = "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs_filt.fasta"
+    output:
+        concat_assembly = "../data/assembly/concat_assembly/{sample}_concat_assembly.fasta"
+    log:
+        "logs/assembly/concat_assembly/{sample}_concat.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 1000,
+        runtime_s = 7200
+    threads:
+        5
+    shell:
+        "cat {input.mspades} {input.mvspades} {input.megahit} > {output.concat_assembly}"
+    
 rule run_virsorter:
     input:
-        "../data/assembly/vsearch/{sample}_contigs_filt_dereplicated.fasta"
+       "../data/assembly/concat_assembly/{sample}_concat_assembly.fasta"
     output:
-        dir = dir("../results/identification/virsorter/{sample}")
+        outdir = directory("../scratch_link/identification/virsorter/{sample}/"),
+        score = "../results/identification/virsorter/{sample}/{sample}_virsorter_score.tsv/"
+       # seq = "../results/indentification/virsorter/{sample}_virsorter_sequences.fasta"
+    params:
+        db = directory("../scratch_link/virsorter/")
     log:
-        "logs/assembly/vsearch/{sample}_vsearch.log"
+        "logs/identification/virsorter/{sample}_virsorter.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 100000,
+        runtime_s = 14400
+    threads:
+        20
+    conda:
+        "envs/virsorter2.yaml"
+    shell:
+        "virsorter setup -d {params.db} -j 40;"
+        "virsorter run -w {output.outdir} -i {input} --keep-original-seq  -j 40 all;"
+        "mv {output.outdir}/final-viral-score.tsv {output.score}"
+
+rule run_viralverify:
+    input:
+        "../data/assembly/concat_assembly/{sample}_concat_assembly.fasta"
+    output:
+        outdir = directory("../scratch_link/identification/viralverify/{sample}/"),
+        score = "../results/identification/viralverify/{sample}/{sample}_viralverify_score.csv/"
+    params:
+        hmm = "../data/hmms/nbc_hmms.hmm.gz"
+    log:
+        "logs/identification/viralverify/{sample}_viralverify.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 100000,
+        runtime_s = 14400
+    threads:
+        20
+    conda:
+        "envs/viralverify.yaml"
+    shell:
+        "viralverify -f {input} -o {output.outdir} --hmm {params.hmm} -t {threads};"
+        "mv {output.outdir}/{wildcards.sample}_concat_assembly_result_table.csv {output.score}"
+
+rule run_deepvirfinder:
+    input:
+         "../data/assembly/concat_assembly/{sample}_concat_assembly.fasta"
+    output:
+        outdir = directory("../scratch_link/identification/deepvirfinder/{sample}"),
+        score = "../results/identification/deepvirfinder/{sample}/{sample}_deepvirfinder_score.tsv/"
+    log:
+        "logs/identification/deepvirfinder/{sample}_dvfinder.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 100000,
+        runtime_s = 14400
+    threads:
+        20
+    conda:
+        "envs/deepvirfinder.yaml"
+    shell:
+        "dvf.py -i {input} -o {output} -c {threads};"
+        "mv {output.outdir}/{wildcards.sample}_concat_assembly.fasta_gt1bp_dvfpred.txt {output.score}"
+
+rule run_vibrant:
+    input:
+        "../data/assembly/concat_assembly/{sample}_concat_assembly.fasta"
+    output:
+        outdir = directory("../scratch_link/identification/vibrant/{sample}/"),
+        #score = "../results/identification//{sample}/{sample}_viralverify_score.csv/"
+    params:
+        "../scratch_link/identification/vibrant"
+    log:
+        "logs/identification/vibrant/{sample}_vibrant.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 100000,
+        runtime_s = 14400
+    threads:
+        20
+    conda:
+        "envs/vibrant.yaml"
+    shell:
+        "cd {params};"
+        "download-db.sh;"
+        "VIBRANT_run.py -i {input} -folder {output.outdir} -t {threads} -d {params}"
+        #"mv {output.outdir}/{wildcards.sample}_concat_assembly_result_table.csv {output.score}"
+
+
+rule parse_virsorter:
+    input:
+        "../results/identification/virsorter/{sample}/{sample}_virsorter_score.tsv/"
+    output:
+        "../results/identification/virsorter/{sample}/{sample}_virsorter_score_parsed.tsv/"
+    log:
+        "logs/identification/virsorter/{sample}_parse_virsoter.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 5000,
+        runtime_s = 3600
+    threads:
+        5
+    script:
+        "scripts/identification/parse_virsorter.py"
+
+rule parse_viralverify:
+    input:
+        "../results/identification/viralverify/{sample}/{sample}_viralverify_score.csv/"
+    output:
+        "../results/identification/viralverify/{sample}/{sample}_viralverify_score_parsed.tsv/"
+    log:
+        "logs/identification/viralverify/{sample}_parse_viralverify.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 5000,
+        runtime_s = 3600
+    threads:
+        5
+    script:
+        "scripts/identification/parse_viralverify.py"
+
+rule parse_deepvirfinder:
+    input:
+        "../results/identification/deepvirfinder/{sample}/{sample}_deepvirfinder_score.tsv/"
+    output:
+        "../results/identification/deepvirfinder/{sample}/{sample}_deepvirfinder_score_parsed.tsv/"
+    log:
+        "logs/identification/deepvirfinder/{sample}_parse_deepvirfinder.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 5000,
+        runtime_s = 3600
+    threads:
+        5
+    script:
+        "scripts/identification/parse_deepvirfinder.py"
+
+
+################################################################################
+############################## Derepliction       ##############################
+################################################################################
+
+# rule dereplicate_assembly:
+#     input:
+#         mspades= "../data/assembly/metaspades/{sample}_metaspades/{sample}_metaspades_contigs_filt.fasta",
+#         mvspades= "../data/assembly/metaviralspades/{sample}_metaviralspades/{sample}_metaviralspades_contigs_filt.fasta",
+#         megahit = "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs_filt.fasta"
+#     output:
+#         concat_assembly = temp("../data/assembly/concat_assembly/{sample}_concat_assembly.fasta"),
+#         cluster_centr = "../data/assembly/vsearch/{sample}_contigs_filt_dereplicated.fasta",
+#         cluster_info = "../results/assembly/vsearch/{sample}_clusters.tsv"
+#     log:
+#         "logs/assembly/vsearch/{sample}_vsearch.log"
+#     resources:
+#         account="pengel_beemicrophage",
+#         mem_mb= 100000,
+#         runtime_s =  144000
+#     threads:
+#         40
+#     conda:
+#         "envs/vsearch.yaml"
+#     shell:
+#         "cat {input.mspades} {input.mvspades} {input.megahit} > {output.concat_assembly};"
+#         "vsearch --cluster_fast {output.concat_assembly} --centroids {output.cluster_centr} --uc {output.cluster_info} \
+#           -id 0.99 -iddef 0 --query_cov 0.9 --maxseqlength 10000000 --threads {threads}"
+

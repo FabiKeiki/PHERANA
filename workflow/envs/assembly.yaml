@@ -1,0 +1,8 @@
+name: assembly_env
+
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - spades
+  - megahit
