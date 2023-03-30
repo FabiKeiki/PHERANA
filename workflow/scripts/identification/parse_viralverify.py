@@ -1,7 +1,4 @@
 #######Parse viral verify #############
-# Assign scores to virus : 1
-
-
 import pandas as pd
 
 viralverify = pd.read_csv(snakemake.input[0], usecols = ['Contig name','Prediction','Score'],sep=',')

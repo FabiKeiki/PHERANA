@@ -3,7 +3,11 @@
 from Bio import SeqIO
 import pandas as pd
 
-phages = pd.read_csv('91P_alltools_score.tsv',sep='\t')
+phages = pd.read_csv(snakemake.input['phages_id'],sep='\t')
+
+
+# filter phages according to score 
+phages = phages[phages['confidence'].astype(int) >= snakemake.params['confidence_thres']]
 
 # Load the names of the contigs from DataFrame A
 contigs = phages['contig'].to_list()
@@ -12,13 +16,13 @@ print(len(contigs))
 phages_seq = {}
 
 # Iterate through the records in the input FASTA file
-for record in SeqIO.parse("91P_concat_assembly.fasta", "fasta"):
+for record in SeqIO.parse(snakemake.input['concat_assembly'], "fasta"):
     # Check whether the record ID is in the set of contig names
     if record.id in contigs:
         # Add the selected record to the dictionary, with the ID as the key
         phages_seq[record.id] = record
 
 # Write the selected records to the output file
-with open("91P_phages.fasta", "w") as output_handle:
-    SeqIO.write(phages_seq.values(), output_handle, "fasta")
+with open(snakemake.output[0], "w") as output:
+    SeqIO.write(phages_seq.values(), output, "fasta")
 
