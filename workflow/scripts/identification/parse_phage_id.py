@@ -1,9 +1,15 @@
 #################### parse_identification ########################
 # This script assemble all the phages id from different tools into
 # a summary table. A confidence is then caclulated based on the
-# score of each tool. Viralverify score is set to one because only
-# all the sequences correspond to identified viruses by the tool
-###################################################################
+# score of each tool. Three level of confidence are calculated :
+# 1: low
+# 2: medium
+# 3: high
+# Viralverify score is set to one because only
+# all the sequences correspond to identified viruses by the tool 
+# (uncertains excluded,(see andrade-martinezComputationalToolsAnalysis2022) )
+##################################################################
+
 import pandas as pd
 import re
 

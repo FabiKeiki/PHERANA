@@ -1,4 +1,7 @@
-####### output phage fasta#############
+################################# output phage fasta ##########################
+#This script extract the phages sequences from the assemblies. A filter based
+# on the confidence is applied : only sequences with confidence_thres >= x,
+# will be selected, (x ranging from 1 to 3)
 
 from Bio import SeqIO
 import pandas as pd
