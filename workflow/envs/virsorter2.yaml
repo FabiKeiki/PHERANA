@@ -1,7 +1,7 @@
-name: virstorter2
+name: virsorter2
 channels:
   - bioconda
   - conda-forge
 dependencies:
   - virsorter
-  
+  - glpk

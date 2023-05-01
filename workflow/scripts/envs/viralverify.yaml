@@ -1,5 +1,0 @@
-name: viralverify
-channels:
-  - bioconda
-dependencies:
-  - viralverify

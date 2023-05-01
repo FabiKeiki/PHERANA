@@ -1,7 +1,0 @@
-name: virstorter2
-channels:
-  - bioconda
-  - conda-forge
-dependencies:
-  - virsorter
-  

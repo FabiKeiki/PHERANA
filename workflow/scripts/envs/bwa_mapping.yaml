@@ -1,8 +1,0 @@
-name: bwa_mapping_env
-channels:
- - conda-forge
- - bioconda
-dependencies:
- - bwa
- - samtools
- - bbmap

@@ -1,5 +1,0 @@
-name: vibrant
-channels:
-  - bioconda
-dependencies:
-  - vibrant

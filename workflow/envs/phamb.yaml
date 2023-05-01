@@ -1,0 +1,5 @@
+name: phamb
+channels:
+   - bioconda
+dependencies:
+   - phamb

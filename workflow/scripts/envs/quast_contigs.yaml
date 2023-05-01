@@ -1,5 +1,0 @@
-name: quast_contigs_env
-channels:
-  - bioconda
-dependencies:
-  - quast
