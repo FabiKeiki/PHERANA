@@ -14,12 +14,7 @@ import pandas as pd
 import re
 
 
-# getting thresholds from snakemake
-hscore_thres = 0.8
-hcount_thres = 3
-
-lscore_thres = 0.5
-lcount_thres = 3
+sample = snakemake.wildcards.sample
 
 #importing input file (phages id)
 virsorter = pd.read_csv(snakemake.input['virsorter'],sep='\t')
@@ -34,18 +29,10 @@ phage_id= phage_id.reset_index()
 # setting new score for viralverify
 phage_id['viralverify'] = 1
 
+# add a coulmn with the sample name at first position
+phage_id.insert(0,'sample',sample)
 
-# counting number of tools passing score thresholds
-phage_id['high_count'] = (phage_id.drop(['contig'],axis=1) > hscore_thres).sum(axis=1)
-phage_id['low_count'] = (phage_id.drop(['contig','high_count'],axis=1) > lscore_thres).sum(axis=1)
-
-# categorizing using a threshold for the minumum number of tools in passing thresholds
-phage_id['confidence'] = 1
-phage_id.loc[phage_id['high_count'] >= hcount_thres , 'confidence'] = 3 
-phage_id.loc[(phage_id['confidence'] != 3) & (phage_id['low_count'] >= lcount_thres), 'confidence'] = 2
-
-
-phage_id.drop(['high_count','low_count'],axis=1).to_csv(snakemake.output[0],sep="\t",index=False)
+phage_id.to_csv(snakemake.output[0],sep="\t",index=False)
 
 
 

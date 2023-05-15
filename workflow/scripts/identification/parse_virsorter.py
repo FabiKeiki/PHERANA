@@ -9,7 +9,7 @@ virsorter = pd.read_csv(snakemake.input[0], usecols = ['seqname','max_score'],se
 virsorter.columns = ['contig','score']
 virsorter['contig'] = virsorter['contig'].str.replace(r':?\|\|(full|lt2gene)', '', regex=True)
 virsorter = virsorter.fillna(0)
-virsorter['tool'] = "virstorter"
+virsorter['tool'] = "virsorter"
 print(virsorter)
 
 

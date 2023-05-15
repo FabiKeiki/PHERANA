@@ -1,11 +1,9 @@
- configfile: "../config/config.yaml"
+    configfile: "../config/config.yaml"
 
 rule all:
     input:
-        #expand("../results/binning/phamb/sample_annotation/{sample}/{sample}_dvf/{sample}.fna_gt2000bp_dvfpred.txt",sample=config["samples"])
-        out_rf = directory("../results/binning/phamb/QC/")
-        #ref = "../data/assembly/concat_assembly/all_concat_assemblies.fasta"
-        #expand("../data/assembly/concat_assembly/{sample}_concat_assembly.fasta",sample=config["samples"])
+        #"../results/identification/summary/100B_summary_score.tsv/"
+         "../results/identification/phages_contigs.tsv"
 #################### Main Functions #######################################
 import os 
 def get_direction_r1(wildcards) :
@@ -19,7 +17,7 @@ def get_direction_r1(wildcards) :
     r1_l3=[s for s in l if "L3_R1" in s]
     r1_l4=[s for s in l if "L4_R1" in s]
 
-    r_list.extend(r1_l1)    
+    r_list.extend(r1_l1)   
     r_list.extend(r1_l2)
     if len(r1_l3) >0: r_list.extend(r1_l3)
     if len(r1_l4) >0: r_list.extend(r1_l4)
@@ -31,7 +29,7 @@ def get_direction_r2(wildcards) :
     samname=wildcards.sample
     l=config["samples"][samname]
 
-    r_list=[]
+    r_list=[]   
     r2_l1=[s for s in l if "L1_R2" in s]
     r2_l2=[s for s in l if "L2_R2" in s]
     r2_l3=[s for s in l if "L3_R2" in s]
@@ -423,10 +421,9 @@ rule parse_motus:
 #   (1): Assembly : Using different assemblers and comparing them with quast
 #   (1.1) metaSPades
 #   (1.2) metaviralSPades
-#   (1.3) MEGAHIT
-#   (1.4) stats on assemblies with metquast
-#   (1.5) filtering assemblies
-#   (1.6) stats on filtered assemblies with metaquast
+#   (1.3) stats on assemblies with metquast
+#   (1.4) filtering assemblies
+#   (1.5) stats on filtered assemblies with metaquast
 ################################################################################
 ################################################################################
 
@@ -486,36 +483,10 @@ rule assemble_metaviralspades:
         "mv {output.scratch_dir}/contigs.fasta {output.contigs}; "
         
         
+
+
+
 ##################################### (1.3) ######################################
-# the following rules use MEGAHIT to assemble the metagenomes of every sample.
-
-rule assemble_megahit:
-    input:
-        R1 = "../data/host_filtered_reads/{sample}_R1_HF.fastq.gz",
-        R2 = "../data/host_filtered_reads/{sample}_R2_HF.fastq.gz"
-    output:
-        scratch_dir=directory("../scratch_link/assembly/megahit/{sample}_megahit/"),
-        contigs="../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs.fasta"
-    params:
-        dir=directory("../scratch_link/assembly/megahit/{sample}_megahit/")
-    threads: 40
-    resources:
-        account="pengel_beemicrophage",
-        mem_mb= 250000,
-        runtime_s= 25000
-    log:
-        "logs/assembly/megahit/{sample}_assemble.log"
-    conda:
-        "envs/assembly.yaml"
-    shell:
-        "megahit -1 {input.R1} -2 {input.R2} \
-        -o {output.scratch_dir} \
-        --k-min 21 --k-max 127 --k-step 12;" 
-        "mv {output.scratch_dir}/final.contigs.fa {output.contigs}; "
-       
-
-
-##################################### (1.4) ######################################
 # the following rules use metaquast to retrieve statistics for each assemblers
 
 
@@ -523,7 +494,6 @@ rule run_quast_contigs:
     input:
         mspades= "../data/assembly/metaspades/{sample}_metaspades/{sample}_metaspades_contigs.fasta",
         mvspades= "../data/assembly/metaviralspades/{sample}_metaviralspades/{sample}_metaviralspades_contigs.fasta",
-        megahit = "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs.fasta"
     output:
         dir=directory("../scratch_link/assembly/quast/{sample}_quast_output/"),
         report= "../results/assembly/quast/{sample}_quast_report.tsv"
@@ -537,9 +507,8 @@ rule run_quast_contigs:
     conda:
         "envs/quast_contigs.yaml"
     shell:
-        "metaquast.py {input.mspades} {input.mvspades} {input.megahit} -o {output.dir} --max-ref-number 0;"
+        "metaquast.py {input.mspades} {input.mvspades} -o {output.dir} --max-ref-number 0;"
         "mv {output.dir}/transposed_report.tsv {output.report}"
-
 
 
 rule parse_quast_reports:
@@ -579,24 +548,6 @@ rule parse_quast_reports:
 #################################### (1.5) ######################################
 # THe follwoing rules apply a filter to the assembled contigs
 
-rule filter_megahit:
-    input:
-        "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs.fasta"
-    output:
-        "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs_filt.fasta"
-    params:
-        length_t = 1000,
-        cov_t = 1
-    resources:
-        account="pengel_beemicrophage",
-        mem_mb= 2000,
-        runtime_s= 1800
-    log:
-        "logs/assembly/filtering/megahit/{sample}_filtering.log"
-    conda:
-        "envs/biopython.yaml"
-    script:
-        "scripts/assembly/filter_assembly.py"
 
 rule filter_metaspades:
     input:
@@ -643,12 +594,10 @@ rule filter_metaviralspades:
 rule run_quast_contigs_filt:
     input:
         mspades= "../data/assembly/metaspades/{sample}_metaspades/{sample}_metaspades_contigs_filt.fasta",
-        mvspades= "../data/assembly/metaviralspades/{sample}_metaviralspades/{sample}_metaviralspades_contigs_filt.fasta",
-        megahit = "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs_filt.fasta"
+        mvspades= "../data/assembly/metaviralspades/{sample}_metaviralspades/{sample}_metaviralspades_contigs_filt.fasta"
     output:
         dir=directory("../scratch_link/assembly/quast/{sample}_quast_output_filt/"),
         report= "../results/assembly/quast/{sample}_quast_report_filt.tsv"
-        
     log:
         "logs/assembly/quast/{sample}_quast_filt.log"
     resources:
@@ -658,7 +607,7 @@ rule run_quast_contigs_filt:
     conda:
         "envs/quast_contigs.yaml"
     shell:
-        "metaquast.py {input.mspades} {input.mvspades} {input.megahit} -o {output.dir} --max-ref-number 0;"
+        "metaquast.py {input.mspades} {input.mvspades} -o {output.dir} --max-ref-number 0;"
         "mv {output.dir}/transposed_report.tsv {output.report}"
 
 
@@ -676,31 +625,10 @@ rule parse_quast_reports_filt:
     script:
         "scripts/assembly/parse_quast_report.py"
 
-
-
-################################################################################
-############################## Phage identification  ###########################
-################################################################################
-#This part of the pipeline runs four tools on all the assembly, to identify 
-#phages, these sequences will then dereplicated and binned. Each phages id tools
-#ouput are parsed and merged, a confidence score is attributed to each id
-#and a fasta file of the phages sequences is extracted :
-#   (1): PHAGES id tools
-#   (1.1) concat assembly
-#   (1.2) run phage id tools (virstorter, viralverify, deepvirfinder, vibrant)
-#   (2) : Parsing outputs
-#   (2.1) parsing tools
-#   (2.2) summary of tools
-#   (2.3) get phages sequences
-
-
-##################################### (1.1) ######################################
-
 rule concat_assembly:
     input: 
         mspades= "../data/assembly/metaspades/{sample}_metaspades/{sample}_metaspades_contigs_filt.fasta",
         mvspades= "../data/assembly/metaviralspades/{sample}_metaviralspades/{sample}_metaviralspades_contigs_filt.fasta",
-        megahit = "../data/assembly/megahit/{sample}_megahit/{sample}_megahit_contigs_filt.fasta"
     output:
         concat_assembly = "../data/assembly/concat_assembly/{sample}_concat_assembly.fasta"
     log:
@@ -712,15 +640,31 @@ rule concat_assembly:
     threads:
         5
     shell:
-        "cat {input.mspades} {input.mvspades} {input.megahit} > {output.concat_assembly}"
+        "cat {input.mspades} {input.mvspades} > {output.concat_assembly}"
 
-##################################### (1.2) ######################################
+################################################################################
+############################## Phage identification  ###########################
+################################################################################
+#This part of the pipeline runs four tools on all the assembly, to identify 
+#phages, these sequences will then dereplicated and binned. Each phages id tools
+#ouput are parsed and merged, a confidence score is attributed to each id
+#and a fasta file of the phages sequences is extracted :
+#   (1): PHAGES id tools
+#   (1.1) run phage id tools (virstorter, viralverify, deepvirfinder, vibrant)
+#   (2) : Parsing outputs
+#   (2.1) parsing tools
+#   (2.2) summary of tools
+#   (2.3) get phages sequences
+
+
+
+##################################### (1.1) ######################################
 
 rule run_virsorter:
     input:
        "../data/assembly/concat_assembly/{sample}_concat_assembly.fasta"
     output:
-        outdir = directory("../scratch_link/identification/virsorter/{sample}_virsorter/"),
+        outdir = temp(directory("../scratch_link/identification/virsorter/{sample}_virsorter/")),
         score = "../results/identification/virsorter/{sample}_virsorter/{sample}_virsorter_score.tsv/"
     params:
         db = directory("../scratch_link/virsorter/")
@@ -743,7 +687,7 @@ rule run_viralverify:
     input:
         "../data/assembly/concat_assembly/{sample}_concat_assembly.fasta"
     output:
-        outdir = directory("../scratch_link/identification/viralverify/{sample}_viralverify/"),
+        outdir = temp(directory("../scratch_link/identification/viralverify/{sample}_viralverify/")),
         score = "../results/identification/viralverify/{sample}_viralverify/{sample}_viralverify_score.csv/"
     params:
         hmm = "../resources/hmms/nbc_hmms.hmm.gz"
@@ -765,7 +709,7 @@ rule run_deepvirfinder:
     input:
          "../data/assembly/concat_assembly/{sample}_concat_assembly.fasta"
     output:
-        outdir = directory("../scratch_link/identification/deepvirfinder/{sample}_deepvirfinder"),
+        outdir = temp(directory("../scratch_link/identification/deepvirfinder/{sample}_deepvirfinder")),
         score = "../results/identification/deepvirfinder/{sample}_deepvirfinder/{sample}_deepvirfinder_score.tsv/"
     log:
         "logs/identification/deepvirfinder/{sample}_dvfinder.log"
@@ -803,7 +747,7 @@ rule run_vibrant:
         assembly = "../data/assembly/concat_assembly/{sample}_concat_assembly.fasta",
         vibrant_db = "vibrant_db"
     output:
-        outdir = directory("../scratch_link/identification/vibrant/{sample}/"),
+        outdir = temp(directory("../scratch_link/identification/vibrant/{sample}/")),
         score = "../results/identification/vibrant/{sample}_vibrant/{sample}_vibrant_score.tsv/"
     log:
         "logs/identification/vibrant/{sample}_vibrant.log"
@@ -919,9 +863,8 @@ rule concat_phage_id:
         runtime_s = 3600
     threads:
         2
-    script:
-        "scripts/identification/concat_phage_id.py"
-
+    shell:
+        "cat {input} > {output}"
 
 
 
@@ -952,142 +895,7 @@ rule get_phage_fasta:
 
 
 
-# ################################################################################
-# ############################## Derepliction       ##############################
-# ################################################################################
 
-# rule dereplicate_assembly:
-#     input:
-#         "../data/phages/{sample}_phages_contigs.fasta/"
-#     output:
-#         cluster_centr = "../data/phages/dereplicated/{sample}_phages_contigs_dereplicated.fasta",
-#         cluster_info = "../results/dereplication/{sample}_clusters.tsv"
-#     log:
-#         "logs/dereplication/phages/{sample}.log"
-#     resources:
-#         account="pengel_beemicrophage",
-#         mem_mb= 100000,
-#         runtime_s =  250000
-#     threads:
-#         30
-#     conda:
-#         "envs/vsearch.yaml"
-#     shell:
-#         "vsearch --cluster_fast {input} --centroids {output.cluster_centr} \
-#         -uc {output.cluster_info} -id 0.99 -iddef 0 --query_cov 0.9 --maxseqlength 10000000\
-#         --threads {threads}"
-
-
-
-
-################################################################################
-################################## viralMAGS ########################################
-################################################################################
-# This part of the pipleine takes takes host filtered reads and reconstructs vMAGS
-################################################################################
-
-
-# rule concat_phages:
-#     input:
-#         refs= expand("../data/phages/dereplicated/{sample}_phages_contigs_dereplicated.fasta",sample=config['samples'])
-#     output:
-#         ref = "../data/phages/concat/concat_phages.fasta"
-#     conda:
-#         "envs/vamb.yaml"
-#     threads: 1
-#     log:
-#         "logs/binning/concat_phages/concat.log"
-#     resources:
-#         account= "pengel_beemicrophage",
-#         mem_mb= 20000,
-#         runtime= "3600"
-#     shell:
-#         "python scripts/binning/concatenate.py {output.ref} {input.refs} --nozip"
-
-
-# rule build_mapping_phages_index:
-#     input:
-#         ref = "../data/phages/concat/concat_phages.fasta"
-#     output:
-#         directory("../data/mapping/phages_index/")
-#     conda:
-#         "envs/map_env.yaml"
-#     threads: 15
-#     params:
-#         basename="phages_index"
-#     log:
-#         "logs/binning/mapping/indexing/phages.log"
-#     resources:
-#         account= "pengel_beemicrophage",
-#         mem_mb= 20000,
-#         runtime= "3600"
-#     shell:
-#         "mkdir -p {output};"
-#         "bowtie2-build {input} {output}/{params.basename} --threads {threads}"
-
-# rule mapping_viral_db: 
-#     input:
-#         index = "../data/mapping/phages_index",
-#         R1 = "../data/host_filtered_reads/{sample}_R1_HF.fastq.gz",
-#         R2 = "../data/host_filtered_reads/{sample}_R2_HF.fastq.gz"
-#     output:
-#         sam=temp("../scratch_link/binning/mapping/{sample}/{sample}_mapped_to_phages_2.sam")
-#     params:
-#         basename="phages_index"
-#     resources:
-#         account="pengel_beemicrophage",
-#         runtime="36000",
-#         mem_mb = 10000
-#     threads: 15
-#     conda: "envs/map_env.yaml"
-#     log:
-#         "logs/binning/mapping/map/{sample}_mapped_to_HBvirDBv1.log"
-#     benchmark: 
-#         "logs/binning/mapping/map/{sample}_mapped_to_HBvirDBv1.benchmark"
-#     shell:
-#         "bowtie2 -x {input.index}/{params.basename} -1 {input.R1} -2 {input.R2} -S {output.sam} --threads {threads}"
-
-
-
-# rule sort_virome_backmapping_bam:
-#     input:
-#         sam="../scratch_link/binning/mapping/{sample}/{sample}_mapped_to_phages.sam"
-#     output:
-#         bam= temp("../scratch_link/binning/mapping/{sample}/{sample}_mapped_to_phages.bam"),
-#         sorted_bam="../scratch_link/binning/mapping/{sample}/{sample}_mapped_to_phages_sorted.bam"
-#     log:
-#         "logs/binning/mapping/sortingbams/sort_bam_{sample}.log"
-#     conda:
-#         "envs/map_env.yaml"
-#     threads: 5
-#     resources:
-#         account = "pengel_beemicrophage",
-#         mem_mb = 8000,
-#         runtime= "5400"
-#     shell:
-#         "samtools view -bh {input.sam} > {output.bam};"
-#         "samtools sort {output.bam} -@ {threads} -o {output.sorted_bam}"
-    
-
-# rule run_vamb:
-#     input:
-#         ref = "../data/phages/concat/concat_phages.fasta",
-#         sorted_bam=expand("../scratch_link/binning/mapping/{sample}/{sample}_mapped_to_phages_sorted.bam", sample=config["samples"])
-#     output:
-#         directory("../results/binning/phages/concat_phages_2_vamb/")
-#     log:
-#         "logs/binning/vamb/binning.log"
-#     conda:
-#         "envs/vamb.yaml"
-#     threads: 25
-#     params:
-#         min_contig_l=2000
-#     resources:
-#         account = "pengel_beemicrophage",
-#         mem_mb = 500000,
-#         runtime= "14400"
-#     shell:
-#         "vamb --outdir {output} --fasta {input.ref} --bamfiles {input.sorted_bam} -m {params.min_contig_l} -p {threads} -o C"
 
 ###############################################################################
 ################################# MAGS ########################################
@@ -1183,7 +991,7 @@ rule run_vamb:
         ref = "../data/assembly/concat_assembly/all_concat_assemblies.fasta",
         sorted_bam=expand("../scratch_link/binning/mapping/{sample}/{sample}_mapped_to_assembly_sorted.bam", sample=config["samples"])
     output:
-        directory("../data/binning/vamb/")
+        directory("../results/binning/vamb/")
     log:
         "logs/binning/vamb/binning.log"
     conda:
@@ -1206,7 +1014,60 @@ rule run_vamb:
 rule parse_vamb:
     input:
         "../results/binning/vamb/vae_clusters.tsv"
-    
+    output:
+        outdir = directory("../scratch_link/binning/bins/"),
+        vamb_parsed = "../results/binning/vamb/vamb_parsed.tsv"
+    params:
+        directory("../data/assembly/concat_assembly/")
+    log:
+        "logs/binning/parse_vamb/parse_vamb.log"
+    conda:
+        "envs/biopython.yaml"
+    threads: 10
+    resources:
+        account = "pengel_beemicrophage",
+        mem_mb = 100000,
+        runtime= "72000"
+    script:
+        "scripts/binning/parse_vamb.py"
+
+
+rule derep_bins:
+    input:
+        "../scratch_link/binning/bins/{bins}.fasta"
+    output:
+        "../scratch_link/binning/derep_cd/{bins}_derep.fasta"
+    log:
+        "logs/binning/derep/intrabin_cd/{bins}.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 500000,
+        runtime_s = 3600
+    threads:
+        5
+    conda:
+        "envs/derep.yaml"
+    shell:
+        "cd-hit-est -i {input} -o {output} -c 0.99 -aL 0.9 -n 10 -d 0 -M {resources.mem_mb} -T {threads}"
+
+rule parse_cluster_info:
+    input:
+        expand("../scratch_link/binning/derep2/{bins}_clusters_info.tsv",
+        bins=glob_wildcards("../scratch_link/binning/derep2/{bins}_clusters_info.tsv").bins)
+    output:
+        "../scratch_link/binning/derep2/{bins}_clusters_info_parsed.tsv"
+    log:
+        "logs/binning/derep/parse_cluster_info/{bins}.log"
+    conda:
+        "envs/biopython.yaml"
+    threads: 1
+    resources:
+        account = "pengel_beemicrophage",
+        mem_mb = 2000,
+        runtime= "3600"
+    script:
+        "scripts/binning/parse_cluster_info.py"
+
 
 # ####################################### PHAMB ############################################################################################
 MICOMPLETEDB = "../resources/hmms/Bact105.hmm"
@@ -1332,31 +1193,6 @@ rule rename_deepvirfinder:
         awk 'BEGIN{{OFS=FS="\t"}}{{sub(/ .*/, "", $1)}}1' {input.dvf} | awk 'BEGIN {{FS="\t"}} $2>2000 {{print}}' | sed '1!s/^/{wildcards.sample}C_/' > {output.dvf_renamed} 
         '''
 
-# rule DeepVirFinder:
-#     input:
-#         sam_tab= "../results/binning/phamb/sample_table.txt" 
-#     output:
-#         dvffile = "../results/binning/phamb/sample_annotation/{sample}/{sample}_dvf/{sample}.fna_gt2000bp_dvfpred.txt"
-#     params:
-#         dvfscript = os.path.join(DVFDIR,'dvf.py'),
-#         contigs = "../results/binning/phamb/assembly/{sample}/{sample}" + CONTIGSUFFIX,
-#         dvfdir = "../results/binning/phamb/sample_annotation/{sample}/{sample}_dvf"
-#     threads: 20
-#     resources:
-#         account = "pengel_beemicrophage",
-#         mem_mb = 50000,
-#         runtime= "28800"
-#     conda:
-#         "envs/dvf.yaml"
-#     log:
-#         "logs/phamb/DVF/{sample}.dvf.log"
-#     shell:
-#         """
-#         export THEANO_FLAGS="base_compiledir={params.dvfdir}"
-#         python {params.dvfscript} -i {params.contigs} -o {params.dvfdir} -l 2000 -c {threads} 2>{log}
-#         rm -r {params.dvfdir}/compiledir_Linux*
-#         """
-
 
 rule aggergate_anno:
     input:
@@ -1384,10 +1220,10 @@ rule aggergate_anno:
         "cat {output.out_anno}/DVF.header {output.out_anno}/DVF.predictions > {output.out_anno}/all.DVF.predictions.txt"
 
 
-rule RF_QC: # TODO I had to copy the phamb git (https://github.com/RasmussenLab/phamb.git) dbs directory in .snakemake/conda/6f50c953011b54affdd78f02f83f847d_/bin/ to make it work
+rule RF_QC: # TODO I had to copy the phamb git (https://github.com/RasmussenLab/phamb.git) dbs directory in corresponding .snakemake/conda/
     input:
         contigs = "../data/assembly/concat_assembly/all_concat_assemblies.fasta",
-        vamb_dir = "../data/binning/concat_assembly_vamb/",
+        vamb_dir = "../results/binning/vamb/",
         anno="../results/binning/phamb/all_annotations"
     output:
         out_rf = directory("../results/binning/phamb/QC/")
@@ -1403,3 +1239,23 @@ rule RF_QC: # TODO I had to copy the phamb git (https://github.com/RasmussenLab/
     shell:
         "run_RF.py {input.contigs} {input.vamb_dir}/vae_clusters.tsv {input.anno} {output.out_rf}"
 
+rule get_phage_id:
+    input:
+        vamb="../results/binning/vamb/vae_clusters.tsv",
+        phamb ="../results/binning/phamb/QC/vambbins_RF_predictions.txt",
+        score = "../results/identification/summary/all_sample_summary_score.tsv"
+    output:
+        bins = "../results/binning/binning_summary.tsv",
+        phages_cntgs = "../results/identification/phages_contigs.tsv",
+        phages_bins = "../results/binning/phages_bins.tsv"
+    threads: 1
+    resources:
+        account = "pengel_beemicrophage",
+        mem_mb = 2000,
+        runtime= "1800"
+    conda:
+        "envs/biopython.yaml"
+    log:
+        "logs/identification/phages_id/phages_id.log"
+    script:
+        "scripts/identification/get_phage_id.py"
