@@ -1,7 +1,5 @@
 name: prodigal
 channels:
-   - bioconda
-   - conda-forge
-   - defaults
+  - bioconda
 dependencies:
-   - prodigal
+  - prodigal

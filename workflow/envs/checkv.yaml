@@ -1,8 +1,8 @@
-name: vibrant
+name: checkv
 channels:
   - bioconda
   - conda-forge
 dependencies:
-  - vibrant
-  - prodigal
-  - hmmer
+  - checkv=1.0.1
+  - diamond
+  

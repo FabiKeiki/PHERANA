@@ -7,6 +7,7 @@
 # 3: high
 # Viralverify score is set to one because only
 # all the sequences correspond to identified viruses by the tool 
+#Fragments and partial sequences are removed from the table ; And so are phages < 2000 bp
 # (uncertains excluded,(see andrade-martinezComputationalToolsAnalysis2022) )
 ##################################################################
 
@@ -31,6 +32,20 @@ phage_id['viralverify'] = 1
 
 # add a coulmn with the sample name at first position
 phage_id.insert(0,'sample',sample)
+
+# Rmove tools specific names in contig(merge vibrant, virsorter and viralverify frgaments)
+
+## Filtering
+
+# Remove contigs that contains "fragment" or "partial" in the name:
+phage_id = phage_id[~phage_id['contig'].str.contains('fragment|partial')]
+
+# Remove contigs that are < 2000 bp (number between "length_" and "_cov")
+phage_id = phage_id[phage_id['contig'].str.extract('length_(\d+)_cov',expand=False).astype(int) >= 2000]
+
+
+
+
 
 phage_id.to_csv(snakemake.output[0],sep="\t",index=False)
 

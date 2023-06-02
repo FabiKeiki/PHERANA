@@ -5,3 +5,7 @@ dependencies:
   - biopython
   - pandas
   - numpy
+  - typed-ast
+  - pyparsing
+  
+

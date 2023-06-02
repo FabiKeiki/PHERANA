@@ -1,9 +1,8 @@
-    configfile: "../config/config.yaml"
+configfile: "../config/config.yaml"
 
 rule all:
     input:
-        #"../results/identification/summary/100B_summary_score.tsv/"
-         "../results/identification/phages_contigs.tsv"
+        directory("../results/phages/vcontact")
 #################### Main Functions #######################################
 import os 
 def get_direction_r1(wildcards) :
@@ -419,11 +418,11 @@ rule parse_motus:
 # This part of the pipleine takes takes host filtered reads (both virome and bacterial) and reconstructs MAGS
 # This part of the pipeline is divided in several steps:
 #   (1): Assembly : Using different assemblers and comparing them with quast
-#   (1.1) metaSPades
-#   (1.2) metaviralSPades
-#   (1.3) stats on assemblies with metquast
-#   (1.4) filtering assemblies
-#   (1.5) stats on filtered assemblies with metaquast
+#       (1.1) metaSPades
+#       (1.2) metaviralSPades
+#       (1.3) stats on assemblies with metquast
+#       (1.4) filtering assemblies
+#       (1.5) stats on filtered assemblies with metaquast
 ################################################################################
 ################################################################################
 
@@ -650,11 +649,10 @@ rule concat_assembly:
 #ouput are parsed and merged, a confidence score is attributed to each id
 #and a fasta file of the phages sequences is extracted :
 #   (1): PHAGES id tools
-#   (1.1) run phage id tools (virstorter, viralverify, deepvirfinder, vibrant)
+#       (1.1) run phage id tools (virstorter, viralverify, deepvirfinder, vibrant)
 #   (2) : Parsing outputs
-#   (2.1) parsing tools
-#   (2.2) summary of tools
-#   (2.3) get phages sequences
+#       (2.1) parsing tools
+#       (2.2) summary of tools
 
 
 
@@ -727,7 +725,7 @@ rule run_deepvirfinder:
 
 rule download_vibrant_db:
     output:
-        directory("vibrant_db")
+        temp(directory("vibrant_db"))
     log:
         "logs/identification/vibrant/download_db.log"
     resources:
@@ -869,40 +867,15 @@ rule concat_phage_id:
 
 
 
-##################################### (2.3) ######################################
-
-rule get_phage_fasta:
-    input:
-        phages_id = "../results/identification/summary/{sample}_summary_score.tsv/",
-        concat_assembly = "../data/assembly/concat_assembly/{sample}_concat_assembly.fasta"
-    output:
-        "../data/phages/{sample}_phages_contigs.fasta/"
-
-    params:
-        confidence_thres = 1
-    log:
-        "logs/identification/phages/{sample}_phages.log"
-    resources:
-        account="pengel_beemicrophage",
-        mem_mb= 5000,
-        runtime_s = 3600
-    threads:
-        5
-    conda:
-        "envs/biopython.yaml"
-    script:
-        "scripts/identification/get_phage_fasta.py"
-
-
-
-
-
 ###############################################################################
-################################# MAGS ########################################
+################################# Binning #####################################
 ###############################################################################
-#This part of the assemblies takes takes host filtered reads and reconstructs MAGS
+#This part bins the contigs using VAMB. Vamb is then parsed throug PHAMB. 
+#   (1) Vamb
+#   (2) Phamb
 ###############################################################################
 
+######################################(1) Vamb ###############################
 
 rule concat_concat_assembly:
     input:
@@ -1006,10 +979,7 @@ rule run_vamb:
     shell:
         "vamb --outdir {output} --fasta {input.ref} --bamfiles {input.sorted_bam} -m {params.min_contig_l} -p {threads} -o C"
 
-
-################################ Intra-BIN dereplication ###########################################
-# The goal of this part is to dereplicate contigs within each bins as they can be identical coming #
-# from different assemblies                                                                        #
+                                                           #
 
 rule parse_vamb:
     input:
@@ -1032,44 +1002,11 @@ rule parse_vamb:
         "scripts/binning/parse_vamb.py"
 
 
-rule derep_bins:
-    input:
-        "../scratch_link/binning/bins/{bins}.fasta"
-    output:
-        "../scratch_link/binning/derep_cd/{bins}_derep.fasta"
-    log:
-        "logs/binning/derep/intrabin_cd/{bins}.log"
-    resources:
-        account="pengel_beemicrophage",
-        mem_mb= 500000,
-        runtime_s = 3600
-    threads:
-        5
-    conda:
-        "envs/derep.yaml"
-    shell:
-        "cd-hit-est -i {input} -o {output} -c 0.99 -aL 0.9 -n 10 -d 0 -M {resources.mem_mb} -T {threads}"
-
-rule parse_cluster_info:
-    input:
-        expand("../scratch_link/binning/derep2/{bins}_clusters_info.tsv",
-        bins=glob_wildcards("../scratch_link/binning/derep2/{bins}_clusters_info.tsv").bins)
-    output:
-        "../scratch_link/binning/derep2/{bins}_clusters_info_parsed.tsv"
-    log:
-        "logs/binning/derep/parse_cluster_info/{bins}.log"
-    conda:
-        "envs/biopython.yaml"
-    threads: 1
-    resources:
-        account = "pengel_beemicrophage",
-        mem_mb = 2000,
-        runtime= "3600"
-    script:
-        "scripts/binning/parse_cluster_info.py"
 
 
-# ####################################### PHAMB ############################################################################################
+
+######################################(2) PHAMB ###############################
+
 MICOMPLETEDB = "../resources/hmms/Bact105.hmm"
 VOGDB= "../resources/hmms/AllVOG.hmm"
 DVFDIR = "../resources/tools/DeepVirFinder"
@@ -1239,6 +1176,25 @@ rule RF_QC: # TODO I had to copy the phamb git (https://github.com/RasmussenLab/
     shell:
         "run_RF.py {input.contigs} {input.vamb_dir}/vae_clusters.tsv {input.anno} {output.out_rf}"
 
+
+
+
+###############################################################################
+################################# Phages fasta extraction #####################
+###############################################################################
+# This part of the pipeline extracts phages (both bins and contigs) from the 
+# metagenome. Single contig bins identified as phages are added to the contigs 
+# bins and a score is caclulated with all the identification tools. Vamb multiple
+# contigs identified as phage by bins are extracted separately. The bins are
+# concat together so that each bins in made of a unique sequence.
+#   (1) Identify phages using score and phamb bins
+#   (2) Get phages fasta
+#       (2.1) Get phages contig fasta
+#       (2.2) Get phages bins fasta
+#       (2.3) concat all phages together
+###############################################################################
+
+##################################### (1) ######################################
 rule get_phage_id:
     input:
         vamb="../results/binning/vamb/vae_clusters.tsv",
@@ -1259,3 +1215,279 @@ rule get_phage_id:
         "logs/identification/phages_id/phages_id.log"
     script:
         "scripts/identification/get_phage_id.py"
+
+
+##################################### (2.1) ######################################
+rule get_phage_fasta_cntg:
+    input:
+        phages_id = "../results/identification/phages_contigs.tsv",
+        concat_assembly = "../data/assembly/concat_assembly/all_concat_assemblies.fasta"
+    output:
+        "../data/phages/phages_contigs.fasta/"
+    params:
+        confidence_thres = 1
+    log:
+        "logs/phages/phages_fasta/phages_contigs.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 5000,
+        runtime_s = 3600
+    threads:
+        5
+    conda:
+        "envs/biopython.yaml"
+    script:
+        "scripts/identification/get_phage_cntgs_fasta.py"
+
+
+##################################### (2.2) ######################################
+
+rule get_phage_fasta_bin:
+    input:
+        phages_id = "../results/binning/phages_bins.tsv",
+        concat_assembly = "../data/assembly/concat_assembly/all_concat_assemblies.fasta"
+    output:
+        "../data/phages/phages_bins.fasta/"
+    log:
+        "logs/phages/phages_fasta/phages_bins.log"
+    conda:
+        "envs/biopython.yaml"
+    threads: 1
+    resources:
+        account = "pengel_beemicrophage",
+        mem_mb = 2000,
+        runtime= "3600"
+    script:
+        "scripts/binning/get_phage_fasta_bin.py"
+
+##################################### (2.3) ######################################
+
+
+rule cat_all_phages:
+    input:
+        "../data/phages/phages_bins.fasta",
+        "../data/phages/phages_contigs.fasta"
+    output:
+        "../data/phages/all_phages.fasta"
+    log:
+        "logs/phages/phages_fasta/cat_all_phages.log"
+    threads: 1
+    resources:
+        account = "pengel_beemicrophage",
+        mem_mb = 2000,
+        runtime= "1800"
+    shell:
+        "cat {input} > {output}"
+
+
+###############################################################################
+################################# Phages quality check #########################
+###############################################################################
+# This part of the pipeline checks the quality of the phages extract using
+# checkv, to assess quality and completeness, and remove host sequqnces for
+# proviruses. Then using checkm to remove sequences that are likely of 
+# bacterial origin. :
+#   (1) Check phages quality using checkv
+###############################################################################
+
+
+##################################### (1) ######################################
+# TODO I had install the database and install the remaining file using: diamond makedb --in checkv_reps.faa --db checkv_reps
+
+
+
+rule run_checkv:
+    input:
+        "../data/phages/all_phages.fasta/"
+    output:
+        outdir = temp(directory("../scratch_link/checkv/phages/")),
+        summary = "../results/phages/checkv/quality_summary.tsv",
+        provir = "../results/phages/checkv/proviruses.fasta"
+    params:
+        "../resources/tools/checkv/checkv-db-v1.5"
+    log:
+        "logs/phages/checkv/phages.log"
+    conda:
+        "envs/checkv.yaml"
+    threads: 15
+    resources:
+        account = "pengel_beemicrophage",
+        mem_mb = 50000,
+        runtime= "14400"
+    shell:
+        "checkv end_to_end {input} {output.outdir} -t {threads} -d {params};"
+        "mv {output.outdir}/quality_summary.tsv {output.summary};"
+        "mv {output.outdir}/proviruses.fna {output.provir}"
+
+
+rule trim_prophages:
+    input:
+        phages = "../data/phages/all_phages.fasta",
+        provir = "../results/phages/checkv/proviruses.fna"
+    output:
+        "../data/phages/all_phages_trimmed.fasta"
+    log:
+        "logs/phages/checkv/trim_proviruses.log"
+    conda:
+       "envs/biopython.yaml"
+    threads: 1
+    resources:
+        account = "pengel_beemicrophage",
+        mem_mb = 5000,
+        runtime= "1800"
+    script:
+        "scripts/phages/trim_provirus.py"
+    
+rule run_checkm:
+    input:
+        "../data/phages/all_phages_trimmed.fasta"
+    output:
+        checkm = temp(directory("../data/phages/checkm/")),
+        outdir = directory("../scratch_link/checkm/phages/"),
+        summary = "../results/phages/checkm/bin_stats_ext.tsv"
+    log:
+        "logs/phages/checkm/phages.log"
+    conda:
+        "envs/checkm.yaml"
+    threads: 15
+    resources:
+        account = "pengel_beemicrophage",
+        mem_mb = 50000,
+        runtime= "36000"
+    shell:
+        """
+        mkdir -p {output.checkm}
+        awk '/^>/ {{OUT="{output.checkm}/"substr($0,2) ".fasta"}}; {{print >> OUT; close(OUT)}}' {input}
+        checkm lineage_wf {output.checkm} {output.outdir} -t {threads} -x fasta
+        mv {output.outdir}/bin_stats_ext.tsv {output.summary}
+        """
+
+rule filter_phages_bacteria:
+    input:
+        phages = "../data/phages/all_phages_trimmed.fasta",
+        checkm = "../results/phages/checkm/bin_stats_ext.tsv"
+    output:
+        checkm_parsed = "../results/phages/checkm/bin_stats_parsed.tsv",
+        phages_filtered = "../data/phages/all_phages_trimmed_filtered.fasta"
+    log:
+        "logs/phages/checkm/filter_phages.log"
+    conda:
+        "envs/biopython.yaml"
+    threads: 1
+    resources:
+        account = "pengel_beemicrophage",
+        mem_mb = 5000,
+        runtime= "1800"
+    script:
+        "scripts/phages/filter_phages_bacteria.py"
+
+
+rule derep_phages:
+    input:
+        "../data/phages/all_phages_trimmed_filtered.fasta"
+    output:
+        outdir = directory("../results/phages/derep"),
+        derep = "../data/phages/all_phages_trimmed_filtered_derep.fasta"
+    log:
+        "logs/phages/derep/derep_phages.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 50000,
+        runtime_s = 10800
+    threads:
+        5
+    conda:
+        "envs/derep.yaml"
+    shell:
+        "vRhyme -i {input} -t {threads} -o {output.outdir} --derep_only --method longest --derep_id 0.99 --frac 0.9"
+        "mv {outdir.outdir}/vRyhme_dereplication/vRhyme_derep_longest_all_phages_trimmed_filtered.fa {output.derep}"
+
+
+
+############################## Clustering ########################################
+# This part of the pipeline uses vcontact to cluster the phages sequences into  
+# viral clusters.
+###############################################################################
+
+rule run_prodigal:
+    input:
+        "../data/phages/all_phages_trimmed_filtered_derep.fasta"
+    output:
+        prot="../results/phages/prodigal/all_phages_trimmed_filtered.faa",
+        chord="../results/phages/prodigal/prot_coord.gbk"
+    log:
+        "logs/phages/clustering/prodigal.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 50000,
+        runtime_s = 14400
+    threads:
+        5
+    conda:
+        "envs/prodigal.yaml"
+    shell:
+        "prodigal -i {input} -a {output.prot} -o {output.chord} -q"
+
+
+rule gene_2_genome:
+    input:
+        "../results/phages/prodigal/all_phages_trimmed_filtered.faa"
+    output:
+        "../results/phages/prodigal/gene_2_genome.tsv"
+    log:
+        "logs/phages/clustering/gene_2_genome.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 10000,
+        runtime_s = 3600
+    threads:
+        5
+    conda:
+        "envs/biopython.yaml"
+    shell:
+        "scripts/clustering/vcontact2_gene2genome.py -p {input} -o {output} -s 'Prodigal-FAA'"
+
+rule run_vcontact:
+    input:
+        prot="../results/phages/prodigal/all_phages_trimmed_filtered.faa",
+        g2g="../results/phages/prodigal/gene_2_genome.tsv"
+    output:
+        directory("../results/phages/vcontact")
+    log:   
+        "logs/phages/clustering/vcontact.log"
+    resources:
+        account="pengel_beemicrophage",
+        mem_mb= 100000,
+        runtime_s = 36000
+    threads:
+        20
+    conda: 
+        "envs/vcontact.yaml"
+    shell:
+        "vcontact2 --raw-proteins {input.prot} --proteins-fp {input.g2g} --db 'ProkaryoticViralRefSeq211-Merged' --output-dir {output}"
+
+
+
+############################## Bacterial Mags ################################
+# This part of the pipeline creates Mags from the bacterial bins binned by vamb
+###############################################################################
+
+rule_get_bins_fasta:
+    input:
+        bins= "../results/binning/vamb/vae_clusters.tsv"
+        concat_assembly = "../data/assembly/concat_assembly/all_concat_assembly.fasta"
+    output:
+        directory("../scratch_link/binning/bins")
+    log:
+        "logs/bacteria/get_bins_fasta.log"
+    conda:
+        "envs/biopython.yaml"
+    threads: 1
+    resources:
+        account = "pengel_beemicrophage",
+        mem_mb = 5000,
+        runtime= "1800"
+    script:
+        "scripts/bacteria/get_bins_fasta.py"
+
+    

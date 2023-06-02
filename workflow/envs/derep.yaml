@@ -1,5 +1,19 @@
 name: derep
 channels:
   - bioconda
+  - defaults
 dependencies:
-  - cd-hit
+  - vrhyme
+  - samtools 
+  - mash 
+  - mummer 
+  - mmseqs2 
+  - prodigal 
+  - bowtie2 
+  - bwa
+  - pandas
+  - numpy
+  - scikit-learn
+  - numba
+  - pysam == 0.15.2
+  - networkx

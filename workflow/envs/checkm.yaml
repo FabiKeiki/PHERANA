@@ -1,8 +1,8 @@
-name: vibrant
+name: checkm
 channels:
   - bioconda
   - conda-forge
 dependencies:
-  - vibrant
-  - prodigal
-  - hmmer
+  - checkm-genome
+  - diamond
+  

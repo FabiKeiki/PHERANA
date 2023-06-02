@@ -13,8 +13,15 @@ phamb = pd.read_csv(snakemake.input['phamb'],sep='\t')
 contigs_score = pd.read_csv(snakemake.input['score'],sep='\t')
 
 
+#change contigs score tools to numeric object
+contigs_score.iloc[:,2:] = contigs_score.iloc[:,2:].apply(pd.to_numeric,errors='coerce')
+# change phamb probability to numeric object
+phamb['probability'] = phamb['probability'].apply(pd.to_numeric,errors='coerce')
+
+
 print(contigs_score.dtypes)
 print(phamb.dtypes)
+
 #(1) Exporting vamb and phamb stats
 
 ## merge phamb and vamb on binname
@@ -59,27 +66,29 @@ single_contigs = single_contigs[['sample','contig','phamb']]
 
 
 ## merge single contigs with contigs_score on contig and sample
-phage_cntg = pd.merge(single_contigs,contigs_score,on=['sample','contig'],how='left')
+phage_cntg = pd.merge(single_contigs,contigs_score,on=['sample','contig'],how='right')
 
-# convert all tools columns to float
-phage_cntg.iloc[:,2:] = phage_cntg.iloc[:,2:].astype('float')
+# # convert all tools columns to float
+# phage_cntg.iloc[:,2:] = phage_cntg.iloc[:,2:].astype('float')
 
 
 ## replace nan with 0
 phage_cntg = phage_cntg.fillna(0)
 
+
 ## set score
 score_3 = 1
 score_2 = 0.8
 score_1 = 0.5
+score_0 = 0.3
 
 
-## for each all columns expecpt the two first change the value with 3 if score >score_2, 2 if score > score_1 and 1 if score < score_1
-phage_cntg.iloc[:,2:] = phage_cntg.iloc[:,2:].applymap(lambda x: 3 if x > score_2 else (2 if x > score_1 else 1))
+## for all but the two first columns, add change the value with 3 if score >score_2, 2 if score > score_1 and 1 if score > score_0, 0 otherwise
+phage_cntg.iloc[:,2:] = phage_cntg.iloc[:,2:].applymap(lambda x: 3 if x > score_2 else (2 if x > score_1 else (1 if x > score_0 else 0)))
 
+## discard conitgs with contig score = 0
+phage_cntg = phage_cntg[phage_cntg.iloc[:,2:].sum(axis=1) > 0]
 
-
-print(phage_cntg['phamb'])
 ## add a colomn confidence with the mean of all tools
 phage_cntg['confidence'] = phage_cntg[['phamb','viralverify','vibrant','virsorter','deepvirfinder']].mean(axis=1)
 
@@ -105,6 +114,7 @@ phage_cntg['binned'] = phage_cntg['contig'].isin(multi_contigs)
 #(3) extract two files: one containing info for single contigs bins and one for multi contigs bins
 
 phage_cntg.to_csv(snakemake.output['phages_cntgs'],sep='\t',index=False)
+
 
 ## create a df containing only multi contigs bins
 phages_bins = phages[phages['contig'].str.len() > 1]
