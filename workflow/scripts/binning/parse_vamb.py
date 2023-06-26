@@ -32,15 +32,15 @@ bins['n_contigs'] = bins['contigs'].str.len()
 #export bins df to tsv
 bins.to_csv(snakemake.output['vamb_parsed'],index=False,sep='\t')
 
-# create loop through the df and for each bin loop through the list of contigs and print the bin name, sample name and contig name
+# # # create loop through the df and for each bin loop through the list of contigs and print the bin name, sample name and contig name
 
-for index, rows in bins.iterrows():
-    bin_seq = {}
-    record_dict = SeqIO.to_dict(SeqIO.parse(snakemake.params[0]+rows['sample']+"_concat_assembly.fasta", "fasta"))
-    for contig in rows['contigs']:
-        bin_seq[contig] = record_dict[contig]
-    with open(snakemake.output['outdir']+'/'+ rows['bin']+".fasta", "w") as output:
-        SeqIO.write(bin_seq.values(), output, "fasta")
+# for index, rows in bins.iterrows():
+#     bin_seq = {}
+#     record_dict = SeqIO.to_dict(SeqIO.parse(snakemake.params[0]+rows['sample']+"_concat_assembly.fasta", "fasta"))
+#     for contig in rows['contigs']:
+#         bin_seq[contig] = record_dict[contig]
+#     with open(snakemake.output['outdir']+'/'+ rows['bin']+".fasta", "w") as output:
+#         SeqIO.write(bin_seq.values(), output, "fasta")
 
 
 

@@ -2,38 +2,21 @@ name: vcontact2
 channels:
   - bioconda
   - conda-forge
+  - defaults
 dependencies:
   - vcontact2
-  - python == 3.10.0
-  - networkx
-  - numpy = 1.23.4
-  - scipy
-  - pandas
-  - scikit-learn
-  - biopython
-  - hdf5
-  - pytables
-  - pyparsing
-  - psutil
-  - mcl
-  - blast
-  - diamond
+  - python=3.7
+  - numpy=1.20.1
+  - scipy = 1.6.0
+  - pandas = 1.0.5
+  - scikit-learn = 0.24.1
+  - biopython = 1.78
+  - hdf5 = 1.10.4
+  - pytables = 3.4.4
+  - pyparsing = 2.4.6
+  - psutil = 5.8.0
+  - mcl = 14.137
+  - blast = 2.7.1
+  - diamond = 0.9.14
   - clusterone
-
-
-  # - python == 3.10.0
-  # - networkx>=2.2
-  # - numpy==1.23.4
-  # - scipy>=1.6.0
-  # - pandas>=1.0.5
-  # - scikit-learn>=0.24.1
-  # - biopython>=1.78
-  # - hdf5>=1.10.4
-  # - pytables>=3.4.0
-  # - pyparsing>=2.4.6
-  # - psutil>=5.8.0
-  # - mcl>=14.137
-  # - blast>=2.6.0
-  # - diamond>=0.9.14
-  # - clusterone
-  
+  - networkx = 2.2 

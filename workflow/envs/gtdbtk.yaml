@@ -1,0 +1,7 @@
+name: gtdbk_env
+channels:
+ - conda-forge
+ - bioconda
+dependencies:
+ - gtdbtk
+ - tqdm
